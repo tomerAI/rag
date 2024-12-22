@@ -1,0 +1,5 @@
+This is a test document.
+It contains multiple lines of text.
+This will be used to test our embedding processor.
+The document contains information that can be processed.
+We can use this to verify our RAG system is working correctly. 

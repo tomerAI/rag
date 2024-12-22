@@ -1,0 +1,35 @@
+# Name and version of the dbt project 
+name: rag_test
+version: 1.0.0
+
+# Profile to use for database connections
+profile: default
+
+# Configuration version for the dbt project
+config-version: 2
+
+# Paths for project components
+model-paths: ["models"]        # Model files
+macro-paths: ["macros"]        # Macros (reusable code)
+seed-paths: ["data"]           # Seed CSV files
+test-paths: ["tests"]          # Test files
+analysis-paths: ["analysis"]   # Analysis SQL files
+
+# Target directory for compiled files and clean-up targets
+target-path: "target"
+clean-targets: ["target"]
+
+# Configuration for seed models
+seeds:
+  rag_test:
+    +schema: rag_test  # Changed schema name for seeds
+    +alias: processed_data  # Optional: Control the table name if needed
+
+# Configuration for models
+models:
+  rag_test:
+    +schema: rag_test  # Changed schema name for models
+    staging:
+      +schema: rag_test
+    marts:
+      +schema: rag_test

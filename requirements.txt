@@ -1,0 +1,14 @@
+gradio
+psycopg2-binary
+numpy
+langchain
+langchain-community
+langchain-chroma
+openai
+dbt-postgres 
+langchain-openai
+prometheus_client
+pytest
+pytest-asyncio
+pytest-mock
+pytest-cov

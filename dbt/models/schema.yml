@@ -1,0 +1,28 @@
+-- models/schema.yml
+version: 2
+
+models:
+  - name: embeddings
+    description: "Table storing document content and their vector embeddings"
+    columns:
+      - name: id
+        description: "Unique identifier for each embedding"
+        tests:
+          - unique
+          - not_null
+        type: serial
+      - name: content
+        description: "The text content that was embedded"
+        type: text
+        tests:
+          - not_null
+      - name: embedding
+        description: "Vector embedding of the content"
+        type: vector(1536)  # OpenAI embeddings are 1536 dimensions
+        tests:
+          - not_null
+      - name: created_at
+        description: "Timestamp when the embedding was created"
+        type: timestamp
+        tests:
+          - not_null

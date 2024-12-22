@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  postgres:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: ${DBT_USER}
+      POSTGRES_PASSWORD: ${DBT_PASSWORD}
+      POSTGRES_DB: ${DBT_DATABASE}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DBT_USER} -d ${DBT_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    environment:
+      - DBT_HOST=postgres
+      - DBT_PORT=5432
+      - DBT_USER=${DBT_USER}
+      - DBT_PASSWORD=${DBT_PASSWORD}
+      - DBT_DATABASE=${DBT_DATABASE}
+      - DBT_SCHEMA=${DBT_SCHEMA}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: python src/init_db.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    environment:
+      - DBT_HOST=postgres
+      - DBT_PORT=5432
+      - DBT_USER=${DBT_USER}
+      - DBT_PASSWORD=${DBT_PASSWORD}
+      - DBT_DATABASE=${DBT_DATABASE}
+      - DBT_SCHEMA=${DBT_SCHEMA}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    ports:
+      - "7860:7860"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    environment:
+      - DBT_HOST=postgres
+      - DBT_PORT=5432
+      - DBT_USER=test
+      - DBT_PASSWORD=test123
+      - DBT_DATABASE=rag_test
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: pytest src/tests/ --cov=src
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
