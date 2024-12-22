@@ -1,4 +1,3 @@
--- models/schema.yml
 version: 2
 
 models:
@@ -10,19 +9,40 @@ models:
         tests:
           - unique
           - not_null
-        type: serial
       - name: content
         description: "The text content that was embedded"
-        type: text
         tests:
           - not_null
       - name: embedding
         description: "Vector embedding of the content"
-        type: vector(1536)  # OpenAI embeddings are 1536 dimensions
+        tests:
+          - not_null
+      - name: document_hash
+        description: "Hash of the document content"
         tests:
           - not_null
       - name: created_at
         description: "Timestamp when the embedding was created"
-        type: timestamp
         tests:
           - not_null
+      - name: loaded_at_field
+        description: "Timestamp when the embedding was loaded"
+        tests:
+          - not_null
+      - name: freshness
+        description: "Freshness of the embedding"
+        tests:
+          - not_null
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: embeddings
+
+freshness:
+  - name: embeddings
+    loaded_at_field: created_at
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}

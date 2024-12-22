@@ -33,7 +33,7 @@ services:
       - DBT_DATABASE=${DBT_DATABASE}
       - DBT_SCHEMA=${DBT_SCHEMA}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-    command: python src/init_db.py
+    command: python src/init.py --env prod
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,11 +67,29 @@ services:
       - DBT_USER=test
       - DBT_PASSWORD=test123
       - DBT_DATABASE=rag_test
+      - DBT_SCHEMA=${DBT_SCHEMA}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-    command: pytest src/tests/ --cov=src
+    command: python src/init.py --env test && pytest src/tests/ --cov=src
     depends_on:
       postgres:
         condition: service_healthy
+
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    environment:
+      - DBT_HOST=postgres
+      - DBT_PORT=5432
+      - DBT_USER=${DBT_USER}
+      - DBT_PASSWORD=${DBT_PASSWORD}
+      - DBT_DATABASE=${DBT_DATABASE}
+      - DBT_SCHEMA=${DBT_SCHEMA}
+    volumes:
+      - ./dbt:/app/dbt
+      - ./logs:/app/logs
+      - ./target:/app/target
+    command: dbt debug && tail -f /dev/null
 
 volumes:
   postgres_data:
