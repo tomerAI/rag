@@ -13,6 +13,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker:/docker-entrypoint-initdb.d
+    networks:
+      - monitoring_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
       interval: 10s
@@ -35,6 +37,8 @@ services:
     volumes:
       - ./src:/app/src
       - ./data:/app/data
+    networks:
+      - monitoring_network
     command: python src/embedding_processor.py --input-dir /app/data
     depends_on:
       postgres:
@@ -55,11 +59,41 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     ports:
       - "7860:7860"
+      - "8000:8000"
+    networks:
+      - monitoring_network
     command: python src/app.py
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - monitoring_network
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring_network
+    environment:
+      - GF_LOG_LEVEL=warn
+      - GF_LOG_MODE=console
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
+
+networks:
+  monitoring_network:
+    driver: bridge

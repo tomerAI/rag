@@ -1,5 +1,11 @@
 from prometheus_client import Counter, Histogram, start_http_server
 import time
+import os
+
+# Start Prometheus HTTP server
+def start_metrics_server(port=8000):
+    start_http_server(port)
+    print(f"Metrics server started on port {port}")
 
 # Metrics definitions
 EMBEDDING_GENERATION_TIME = Histogram(

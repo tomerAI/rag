@@ -28,6 +28,8 @@ def process_query(message, processor):
 
 def main():
     try:
+        from utils.metrics import start_metrics_server
+        start_metrics_server()
         processor = initialize_app()
         
         iface = gr.Interface(
