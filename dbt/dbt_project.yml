@@ -22,22 +22,22 @@ clean-targets: ["target"]
 # Configuration for seed models
 seeds:
   rag_test:
-    +schema: raw  # Changed schema name for seeds
+    +schema: raw
     +alias: processed_data  # Optional: Control the table name if needed
 
 # Configuration for models
 models:
   rag_test:
-    +schema: main
+    +schema: raw  # Use a literal value instead of env_var
     staging:
-      +schema: staging
+      +schema: raw_staging
     marts:
-      +schema: marts
+      +schema: raw_marts
 
 # Add these configurations:
 vars:
   # Define common variables here
-  schema_prefix: "{{ env_var('DBT_SCHEMA') }}"
+  schema_prefix: raw
   
 # Add documentation configuration
 docs-paths: ["docs"]

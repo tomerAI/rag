@@ -1,50 +1,53 @@
-version: '3.8'
-
 services:
   postgres:
-    build: 
-      context: .
-      dockerfile: Dockerfile
+    image: pgvector/pgvector:pg17
     environment:
-      POSTGRES_USER: ${DBT_USER}
-      POSTGRES_PASSWORD: ${DBT_PASSWORD}
-      POSTGRES_DB: ${DBT_DATABASE}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DBT_USER=${DBT_USER}
+      - DBT_PASSWORD=${DBT_PASSWORD}
+      - DBT_DATABASE=${DBT_DATABASE}
+      - DBT_SCHEMA=${DBT_SCHEMA}
+    ports:
+      - "${DBT_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DBT_USER} -d ${DBT_DATABASE}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  init:
+  embeddings:
     build:
       context: .
       dockerfile: Dockerfile.app
     environment:
-      - DBT_HOST=postgres
-      - DBT_PORT=5432
+      - DBT_HOST=${DBT_HOST}
+      - DBT_PORT=${DBT_PORT}
       - DBT_USER=${DBT_USER}
       - DBT_PASSWORD=${DBT_PASSWORD}
       - DBT_DATABASE=${DBT_DATABASE}
       - DBT_SCHEMA=${DBT_SCHEMA}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-    command: python src/init.py --env prod
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+    command: python src/embedding_processor.py --input-dir /app/data
     depends_on:
       postgres:
         condition: service_healthy
+    restart: on-failure
 
   app:
     build:
       context: .
       dockerfile: Dockerfile.app
     environment:
-      - DBT_HOST=postgres
-      - DBT_PORT=5432
+      - DBT_HOST=${DBT_HOST}
+      - DBT_PORT=${DBT_PORT}
       - DBT_USER=${DBT_USER}
       - DBT_PASSWORD=${DBT_PASSWORD}
       - DBT_DATABASE=${DBT_DATABASE}
@@ -52,44 +55,11 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     ports:
       - "7860:7860"
-    depends_on:
-      init:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  test:
-    build:
-      context: .
-      dockerfile: Dockerfile.app
-    environment:
-      - DBT_HOST=postgres
-      - DBT_PORT=5432
-      - DBT_USER=test
-      - DBT_PASSWORD=test123
-      - DBT_DATABASE=rag_test
-      - DBT_SCHEMA=${DBT_SCHEMA}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    command: python src/init.py --env test && pytest src/tests/ --cov=src
+    command: python src/app.py
     depends_on:
       postgres:
         condition: service_healthy
-
-  dbt:
-    build:
-      context: .
-      dockerfile: Dockerfile.app
-    environment:
-      - DBT_HOST=postgres
-      - DBT_PORT=5432
-      - DBT_USER=${DBT_USER}
-      - DBT_PASSWORD=${DBT_PASSWORD}
-      - DBT_DATABASE=${DBT_DATABASE}
-      - DBT_SCHEMA=${DBT_SCHEMA}
-    volumes:
-      - ./dbt:/app/dbt
-      - ./logs:/app/logs
-      - ./target:/app/target
-    command: dbt debug && tail -f /dev/null
+    restart: unless-stopped
 
 volumes:
   postgres_data:

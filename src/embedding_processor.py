@@ -1,11 +1,15 @@
 import os
 import hashlib
+import argparse
 from datetime import datetime
+import psycopg2
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.document_loaders import TextLoader
 from utils.logger import setup_logger
+from utils.db import get_db_params, wait_for_db
 from utils.metrics import EMBEDDING_GENERATION_TIME, EMBEDDING_COUNT, MetricsMiddleware
+import json
 
 class DocumentEmbedder:
     def __init__(self, chunk_size=1000, chunk_overlap=200):
@@ -15,6 +19,7 @@ class DocumentEmbedder:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap
         )
+        self.db_params = get_db_params()
     
     def _generate_document_hash(self, content):
         return hashlib.md5(content.encode()).hexdigest()
@@ -57,4 +62,55 @@ class DocumentEmbedder:
                     file_path = os.path.join(root, file)
                     all_embeddings.extend(self.process_file(file_path))
         return all_embeddings 
+        
+    def store_embeddings(self, embedded_documents):
+        schema = os.getenv('DBT_SCHEMA')
+        if not wait_for_db(self.db_params):
+            self.logger.error("Failed to connect to database")
+            return False
+
+        try:
+            with psycopg2.connect(**self.db_params) as conn:
+                with conn.cursor() as cur:
+                    for emb in embedded_documents:
+                        cur.execute(f"""
+                            INSERT INTO {schema}.embeddings 
+                            (content, embedding, document_hash, version, processed_at, source, metadata)
+                            VALUES (%s, %s::vector, %s, %s, %s, %s, %s)
+                            ON CONFLICT (document_hash) DO NOTHING
+                        """, (
+                            emb['content'],
+                            list(emb['embedding']),
+                            emb['document_hash'],
+                            emb['version'],
+                            emb['processed_at'],
+                            emb['source'],
+                            json.dumps(emb.get('metadata', {}))
+                        ))
+                conn.commit()
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to store embeddings: {str(e)}")
+            return False
+
+def main():
+    parser = argparse.ArgumentParser(description='Process documents and store embeddings')
+    parser.add_argument('--input-dir', required=True, help='Directory containing documents to process')
+    args = parser.parse_args()
+
+    embedder = DocumentEmbedder()
+    
+    for root, _, files in os.walk(args.input_dir):
+        for file in files:
+            if file.endswith(('.txt', '.py', '.md')):
+                file_path = os.path.join(root, file)
+                try:
+                    embeddings = embedder.process_file(file_path)
+                    if embedder.store_embeddings(embeddings):
+                        embedder.logger.info(f"Successfully processed and stored embeddings for {file_path}")
+                except Exception as e:
+                    embedder.logger.error(f"Failed to process {file_path}: {str(e)}")
+
+if __name__ == "__main__":
+    main()
         

@@ -10,3 +10,12 @@ default:
       dbname: "{{ env_var('DBT_DATABASE') }}"
       schema: "{{ env_var('DBT_SCHEMA') }}"
       threads: 4
+    test:
+      type: postgres
+      host: "{{ env_var('DBT_HOST') }}"
+      port: "{{ env_var('DBT_PORT') | as_number }}"
+      user: "{{ env_var('DBT_TEST_USER', 'test') }}"
+      password: "{{ env_var('DBT_TEST_PASSWORD', 'test123') }}"
+      dbname: "{{ env_var('DBT_TEST_DATABASE', 'rag_test') }}"
+      schema: "{{ env_var('DBT_TEST_SCHEMA', 'raw') }}"
+      threads: 4

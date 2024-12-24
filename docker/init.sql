@@ -1,38 +1,118 @@
-DO $$
-BEGIN
-    -- Create thn user if not exists
-    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'thn') THEN
-        CREATE USER thn WITH PASSWORD 'test123';
-    END IF;
+-- First set the variables
+\set DBT_USER `echo "$DBT_USER"`
+\set DBT_PASSWORD `echo "$DBT_PASSWORD"`
+\set DBT_DATABASE `echo "$DBT_DATABASE"`
+\set DBT_SCHEMA `echo "$DBT_SCHEMA"`
 
-    -- Create test user if not exists
-    IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'test') THEN
-        CREATE USER test WITH PASSWORD 'test123';
+-- Store variables in temporary tables for validation and later use
+CREATE TEMPORARY TABLE IF NOT EXISTS temp_vars (
+    var_name text PRIMARY KEY,
+    var_value text
+);
+
+INSERT INTO temp_vars VALUES 
+    ('dbt_user', :'DBT_USER'),
+    ('dbt_password', :'DBT_PASSWORD'),
+    ('dbt_database', :'DBT_DATABASE'),
+    ('dbt_schema', :'DBT_SCHEMA')
+ON CONFLICT (var_name) DO UPDATE SET var_value = EXCLUDED.var_value;
+
+-- Validate variables
+DO $$
+DECLARE
+    v_user text;
+    v_password text;
+    v_database text;
+    v_schema text;
+BEGIN
+    SELECT var_value INTO v_user FROM temp_vars WHERE var_name = 'dbt_user';
+    SELECT var_value INTO v_password FROM temp_vars WHERE var_name = 'dbt_password';
+    SELECT var_value INTO v_database FROM temp_vars WHERE var_name = 'dbt_database';
+    SELECT var_value INTO v_schema FROM temp_vars WHERE var_name = 'dbt_schema';
+
+    IF v_user IS NULL OR v_user = '' THEN
+        RAISE EXCEPTION 'DBT_USER environment variable is not set';
+    END IF;
+    IF v_password IS NULL OR v_password = '' THEN
+        RAISE EXCEPTION 'DBT_PASSWORD environment variable is not set';
+    END IF;
+    IF v_database IS NULL OR v_database = '' THEN
+        RAISE EXCEPTION 'DBT_DATABASE environment variable is not set';
+    END IF;
+    IF v_schema IS NULL OR v_schema = '' THEN
+        RAISE EXCEPTION 'DBT_SCHEMA environment variable is not set';
     END IF;
 END
 $$;
 
--- Create database if not exists
-SELECT 'CREATE DATABASE rag_test'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'rag_test');
+-- Create DBT user
+DO $$
+DECLARE
+    v_user text;
+    v_password text;
+BEGIN
+    SELECT var_value INTO v_user FROM temp_vars WHERE var_name = 'dbt_user';
+    SELECT var_value INTO v_password FROM temp_vars WHERE var_name = 'dbt_password';
 
--- Connect to the database
-\c rag_test
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = v_user) THEN
+        EXECUTE format('CREATE USER %I WITH PASSWORD %L', v_user, v_password);
+    END IF;
+END
+$$;
 
--- Grant privileges (will not error if already granted)
-GRANT ALL PRIVILEGES ON DATABASE rag_test TO thn;
-GRANT ALL PRIVILEGES ON DATABASE rag_test TO test;
+-- Create database (outside of DO block)
+SELECT format('CREATE DATABASE %I', var_value) 
+FROM temp_vars 
+WHERE var_name = 'dbt_database' 
+AND NOT EXISTS (
+    SELECT FROM pg_database WHERE datname = var_value
+)\gexec
 
--- Create extension if not exists (will not error if already exists)
+-- Connect to the DBT database
+\c :DBT_DATABASE
+
+-- Recreate temporary table in new connection
+CREATE TEMPORARY TABLE IF NOT EXISTS temp_vars (
+    var_name text PRIMARY KEY,
+    var_value text
+);
+
+INSERT INTO temp_vars VALUES 
+    ('dbt_user', :'DBT_USER'),
+    ('dbt_password', :'DBT_PASSWORD'),
+    ('dbt_database', :'DBT_DATABASE'),
+    ('dbt_schema', :'DBT_SCHEMA')
+ON CONFLICT (var_name) DO UPDATE SET var_value = EXCLUDED.var_value;
+
+-- Create extensions and schema
 CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE SCHEMA IF NOT EXISTS raw;
+DO $$
+DECLARE
+    v_user text;
+    v_database text;
+    v_schema text;
+BEGIN
+    SELECT var_value INTO v_user FROM temp_vars WHERE var_name = 'dbt_user';
+    SELECT var_value INTO v_database FROM temp_vars WHERE var_name = 'dbt_database';
+    SELECT var_value INTO v_schema FROM temp_vars WHERE var_name = 'dbt_schema';
 
-CREATE TABLE IF NOT EXISTS raw.embeddings (
+    -- Create schema
+    EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', v_schema);
+    
+    -- Grant privileges
+    EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', v_database, v_user);
+    EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA %I TO %I', v_schema, v_user);
+    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT ALL ON TABLES TO %I', v_schema, v_user);
+END
+$$;
+
+-- Create embeddings table
+CREATE TABLE IF NOT EXISTS :DBT_SCHEMA.embeddings (
     id SERIAL PRIMARY KEY,
     content TEXT NOT NULL,
     embedding vector(1536) NOT NULL,
-    document_hash TEXT NOT NULL,
+    document_hash TEXT UNIQUE NOT NULL,
     version TEXT,
     processed_at TIMESTAMP,
     source TEXT,
@@ -40,10 +120,16 @@ CREATE TABLE IF NOT EXISTS raw.embeddings (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-GRANT ALL PRIVILEGES ON SCHEMA raw TO test;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA raw TO test;
-ALTER DEFAULT PRIVILEGES IN SCHEMA raw GRANT ALL PRIVILEGES ON TABLES TO test;
-
-GRANT ALL PRIVILEGES ON SCHEMA raw TO thn;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA raw TO thn;
-ALTER DEFAULT PRIVILEGES IN SCHEMA raw GRANT ALL PRIVILEGES ON TABLES TO thn;
+-- Grant permissions on the embeddings table
+DO $$
+DECLARE
+    v_user text;
+    v_schema text;
+BEGIN
+    SELECT var_value INTO v_user FROM temp_vars WHERE var_name = 'dbt_user';
+    SELECT var_value INTO v_schema FROM temp_vars WHERE var_name = 'dbt_schema';
+    
+    EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA %I TO %I', v_schema, v_user);
+    EXECUTE format('GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA %I TO %I', v_schema, v_user);
+END
+$$;

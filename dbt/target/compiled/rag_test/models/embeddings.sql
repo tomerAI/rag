@@ -1,8 +1,5 @@
 -- models/embeddings.sql
-{{ config(
-    materialized='table',
-    schema=env_var('DBT_SCHEMA')
-) }}
+
 
 SELECT 
     id,
@@ -14,4 +11,4 @@ SELECT
     source,
     metadata,
     created_at
-FROM {{ source('raw', 'embeddings') }} 
+FROM "rag"."raw"."embeddings"

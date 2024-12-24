@@ -1,0 +1,20 @@
+# Introduction to Vector Databases
+
+Vector databases are specialized database systems designed to store and query high-dimensional vectors efficiently. They are particularly useful in machine learning applications, especially for:
+
+1. Similarity search
+2. Recommendation systems
+3. Image recognition
+4. Natural language processing
+
+## Key Features
+- Fast nearest neighbor search
+- Efficient vector indexing
+- Support for high-dimensional data
+- Scalability for large datasets
+
+## Common Use Cases
+* Semantic search
+* Face recognition
+* Content recommendation
+* Document similarity

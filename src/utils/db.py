@@ -6,21 +6,16 @@ import os
 logger = setup_logger(__name__)
 
 def get_db_params(env="prod"):
-    if env == "test":
-        return {
-            'host': os.getenv('DBT_HOST', 'localhost'),
-            'port': os.getenv('DBT_PORT', 5432),
-            'user': 'test',
-            'password': 'test123',
-            'database': 'rag_test'
-        }
-    return {
+    # Connection parameters
+    conn_params = {
         'host': os.getenv('DBT_HOST'),
         'port': os.getenv('DBT_PORT'),
         'user': os.getenv('DBT_USER'),
         'password': os.getenv('DBT_PASSWORD'),
         'database': os.getenv('DBT_DATABASE')
     }
+    # Remove None values
+    return {k: v for k, v in conn_params.items() if v is not None}
 
 def wait_for_db(db_params, max_retries=30, retry_interval=1):
     for attempt in range(max_retries):
