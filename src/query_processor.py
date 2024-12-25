@@ -8,6 +8,7 @@ from utils.metrics import QUERY_PROCESSING_TIME, QUERY_COUNT, DB_OPERATION_TIME,
 import traceback
 import logging
 from utils.logger import setup_logger
+from utils.pii_handler import PIIHandler
 
 
 class QueryProcessor:
@@ -20,6 +21,7 @@ class QueryProcessor:
             ("human", "{query}")
         ])
         self.logger = setup_logger(__name__)
+        self.pii_handler = PIIHandler()
         
     def _cosine_similarity(self, a, b):
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
@@ -64,12 +66,21 @@ class QueryProcessor:
     @MetricsMiddleware.track_time(QUERY_PROCESSING_TIME)
     def get_answer(self, query):
         QUERY_COUNT.inc()
+        # Identify entities
+        entities = self.pii_handler.identify_entities(query)
+        
+        # Use original query for vector search
         relevant_docs = self.query_database(query)
         
-        # Extract content from the dictionary results
+        # Mask PII before sending to OpenAI
+        masked_query = self.pii_handler.mask_entities(query, entities)
         context = "\n".join(doc['content'] for doc in relevant_docs)
         
-        messages = self.prompt.format_messages(context=context, query=query)
+        messages = self.prompt.format_messages(
+            context=context,
+            query=masked_query
+        )
         response = self.llm.generate([messages])
         
-        return response.generations[0][0].text
+        # Restore PII in response if needed
+        return self.pii_handler.restore_entities(response.generations[0][0].text)

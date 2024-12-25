@@ -61,6 +61,10 @@ A powerful document question-answering system that uses embeddings and vector se
    - [ ] Add rate limiting
    - [ ] Create API documentation
 
+2. **Privacy and Security**
+   - [X] Add PII detection and masking
+   - [ ] Create and use PII detection model on danish data
+
 2. **Feature Enhancements**
    - [ ] Add support for more document formats (PDF, DOCX)
    - [ ] Implement batch processing for multiple documents
