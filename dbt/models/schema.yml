@@ -33,6 +33,14 @@ models:
         description: "Freshness of the embedding"
         tests:
           - not_null
+      - name: masked_content
+        description: "The PII-masked version of the content"
+        tests:
+          - not_null
+      - name: pii_metadata
+        description: "Metadata about detected PII entities and mappings"
+        tests:
+          - not_null
 
 sources:
   - name: raw

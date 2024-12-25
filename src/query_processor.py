@@ -6,9 +6,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from utils.metrics import QUERY_PROCESSING_TIME, QUERY_COUNT, DB_OPERATION_TIME, MetricsMiddleware
 import traceback
-import logging
 from utils.logger import setup_logger
-from utils.pii_handler import PIIHandler
 
 
 class QueryProcessor:
@@ -21,8 +19,7 @@ class QueryProcessor:
             ("human", "{query}")
         ])
         self.logger = setup_logger(__name__)
-        self.pii_handler = PIIHandler()
-        
+    
     def _cosine_similarity(self, a, b):
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     
@@ -34,13 +31,9 @@ class QueryProcessor:
         try:
             with psycopg2.connect(**self.db_params) as conn:
                 with conn.cursor() as cur:
-                    # Ensure query_embedding is a list of floats
-                    if isinstance(query_embedding, np.ndarray):
-                        query_embedding = query_embedding.tolist()
-                    
-                    # Convert to proper format for pgvector and include schema
                     query = f"""
-                        SELECT content, 1 - (embedding <=> %s::vector) as similarity
+                        SELECT content,
+                               1 - (embedding <=> %s::vector) as similarity
                         FROM {schema}.embeddings
                         WHERE embedding <=> %s::vector < 0.8
                         ORDER BY embedding <=> %s::vector
@@ -49,38 +42,23 @@ class QueryProcessor:
                     cur.execute(query, (query_embedding, query_embedding, query_embedding, top_k))
                     results = cur.fetchall()
                     
-                    # Convert results to a list of dictionaries for easier handling
-                    formatted_results = [
-                        {
-                            'content': row[0],
-                            'similarity': float(row[1])
-                        }
-                        for row in results
-                    ]
-                    return formatted_results
+                    return [{
+                        'content': row[0],
+                        'similarity': float(row[1])
+                    } for row in results]
         except Exception as e:
             self.logger.error(f"Error processing query: {str(e)}")
-            self.logger.error(f"Traceback: {traceback.format_exc()}")
             raise
-    
+
     @MetricsMiddleware.track_time(QUERY_PROCESSING_TIME)
     def get_answer(self, query):
         QUERY_COUNT.inc()
-        # Identify entities
-        entities = self.pii_handler.identify_entities(query)
-        
-        # Use original query for vector search
         relevant_docs = self.query_database(query)
-        
-        # Mask PII before sending to OpenAI
-        masked_query = self.pii_handler.mask_entities(query, entities)
         context = "\n".join(doc['content'] for doc in relevant_docs)
         
         messages = self.prompt.format_messages(
             context=context,
-            query=masked_query
+            query=query
         )
         response = self.llm.generate([messages])
-        
-        # Restore PII in response if needed
-        return self.pii_handler.restore_entities(response.generations[0][0].text)
+        return response.generations[0][0].text

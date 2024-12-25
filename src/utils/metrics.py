@@ -33,16 +33,6 @@ QUERY_COUNT = Counter(
     'Total number of queries processed'
 )
 
-PII_PROCESSING_TIME = Histogram(
-    'pii_processing_seconds',
-    'Time spent on PII detection and masking'
-)
-
-PII_ENTITIES_DETECTED = Counter(
-    'pii_entities_detected_total',
-    'Total number of PII entities detected'
-)
-
 class MetricsMiddleware:
     @staticmethod
     def track_time(metric):

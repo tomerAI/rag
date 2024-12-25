@@ -62,8 +62,7 @@ A powerful document question-answering system that uses embeddings and vector se
    - [ ] Create API documentation
 
 2. **Privacy and Security**
-   - [X] Add PII detection and masking
-   - [ ] Create and use PII detection model on danish data
+   - [ ] Add PII detection and masking on query and embeddings from an API
 
 2. **Feature Enhancements**
    - [ ] Add support for more document formats (PDF, DOCX)

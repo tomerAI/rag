@@ -4,50 +4,55 @@ import argparse
 from datetime import datetime
 import psycopg2
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import TextLoader
 from langchain_openai import OpenAIEmbeddings
-from langchain.document_loaders import TextLoader
 from utils.logger import setup_logger
 from utils.db import get_db_params, wait_for_db
 from utils.metrics import EMBEDDING_GENERATION_TIME, EMBEDDING_COUNT, MetricsMiddleware
 import json
+from processors.registry import ProcessorRegistry
+import processors
+from typing import List, Dict, Any
 
 class DocumentEmbedder:
-    def __init__(self, chunk_size=1000, chunk_overlap=200):
+    def __init__(self):
         self.logger = setup_logger(__name__)
         self.embeddings = OpenAIEmbeddings()
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
         self.db_params = get_db_params()
+        
+        # Wait for database to be ready
+        if not wait_for_db(self.db_params):
+            self.logger.error("Failed to connect to database")
+            raise RuntimeError("Database connection failed")
     
     def _generate_document_hash(self, content):
         return hashlib.md5(content.encode()).hexdigest()
-    
-    @MetricsMiddleware.track_time(EMBEDDING_GENERATION_TIME)
-    def process_file(self, file_path):
+
+    def process_file(self, file_path: str) -> List[Dict[str, Any]]:
+        file_extension = os.path.splitext(file_path)[1]
+        processor_class = ProcessorRegistry.get_processor(file_extension)
+        processor = processor_class()
+        
         try:
-            loader = TextLoader(file_path)
-            documents = loader.load()
-            splits = self.text_splitter.split_documents(documents)
+            # Process the document into chunks
+            chunks = processor.process(file_path)
             
+            # Generate embeddings for each chunk
             embedded_documents = []
-            for doc in splits:
-                vector = self.embeddings.embed_query(doc.page_content)
-                doc_hash = self._generate_document_hash(doc.page_content)
+            for chunk in chunks:
+                vector = self.embeddings.embed_query(chunk['content'])
+                doc_hash = self._generate_document_hash(chunk['content'])
                 
                 embedded_documents.append({
-                    'content': doc.page_content,
+                    'content': chunk['content'],
                     'embedding': vector,
-                    'metadata': doc.metadata,
-                    'source': file_path,
                     'document_hash': doc_hash,
+                    'metadata': chunk['metadata'],
+                    'source': file_path,
                     'version': '1.0',
-                    'processed_at': datetime.utcnow().isoformat()
+                    'processed_at': datetime.now().isoformat()
                 })
             
-            self.logger.info(f"Successfully processed file: {file_path}")
-            EMBEDDING_COUNT.inc(len(embedded_documents))
             return embedded_documents
             
         except Exception as e:
@@ -56,12 +61,21 @@ class DocumentEmbedder:
 
     def process_directory(self, directory_path):
         all_embeddings = []
+        supported_extensions = set()
+        for processor in ProcessorRegistry._processors.values():
+            supported_extensions.update(processor.get_supported_extensions())
+        
         for root, _, files in os.walk(directory_path):
             for file in files:
-                if file.endswith('.txt') or file.endswith('.py'):
+                file_ext = os.path.splitext(file)[1].lower()
+                if file_ext in supported_extensions:
                     file_path = os.path.join(root, file)
-                    all_embeddings.extend(self.process_file(file_path))
-        return all_embeddings 
+                    try:
+                        embeddings = self.process_file(file_path)
+                        all_embeddings.extend(embeddings)
+                    except Exception as e:
+                        self.logger.error(f"Failed to process {file_path}: {str(e)}")
+        return all_embeddings
         
     def store_embeddings(self, embedded_documents):
         schema = os.getenv('DBT_SCHEMA')
@@ -75,7 +89,8 @@ class DocumentEmbedder:
                     for emb in embedded_documents:
                         cur.execute(f"""
                             INSERT INTO {schema}.embeddings 
-                            (content, embedding, document_hash, version, processed_at, source, metadata)
+                            (content, embedding, document_hash, 
+                             version, processed_at, source, metadata)
                             VALUES (%s, %s::vector, %s, %s, %s, %s, %s)
                             ON CONFLICT (document_hash) DO NOTHING
                         """, (
@@ -100,9 +115,15 @@ def main():
 
     embedder = DocumentEmbedder()
     
+    # Get all supported extensions from registered processors
+    supported_extensions = set()
+    for processor in ProcessorRegistry._processors.values():
+        supported_extensions.update(processor.get_supported_extensions())
+    
     for root, _, files in os.walk(args.input_dir):
         for file in files:
-            if file.endswith(('.txt', '.py', '.md')):
+            file_ext = os.path.splitext(file)[1].lower()
+            if file_ext in supported_extensions:
                 file_path = os.path.join(root, file)
                 try:
                     embeddings = embedder.process_file(file_path)
