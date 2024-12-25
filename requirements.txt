@@ -6,7 +6,6 @@ langchain-community
 langchain-chroma
 openai
 dbt-postgres 
-langchain-openai
 prometheus_client
 pytest
 pytest-asyncio

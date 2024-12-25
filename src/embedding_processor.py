@@ -4,7 +4,7 @@ import argparse
 from datetime import datetime
 import psycopg2
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain.document_loaders import TextLoader
 from utils.logger import setup_logger
 from utils.db import get_db_params, wait_for_db
