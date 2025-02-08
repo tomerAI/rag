@@ -55,13 +55,16 @@ A powerful document question-answering system that uses embeddings and vector se
 
 ## Todo List
 
-1. **API Development**
+0. Infrastructure
+- [ ] Implement vLLM: https://github.com/vllm-project/vllm
+
+2. **API Development**
    - [ ] Build REST API endpoints for data posting to database
    - [ ] Implement authentication and authorization
    - [ ] Add rate limiting
    - [ ] Create API documentation
 
-2. **Privacy and Security**
+3. **Privacy and Security**
    - [ ] Add PII detection and masking on query and embeddings from an API
 
 2. **Feature Enhancements**
